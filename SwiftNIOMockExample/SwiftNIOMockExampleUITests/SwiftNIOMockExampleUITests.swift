@@ -44,7 +44,7 @@ class SwiftNIOMockExampleUITests: XCTestCase {
             request: { (request) in
                 var head = request.head
                 head.uri = "https://postman-echo.com/\(String(describing: request.head.method).lowercased())"
-                return Server.HTTPHandler.Request(head: head, body: request.body, ctx: request.ctx)
+                return Server.HTTPHandler.Request(head: head, body: request.body, context: request.context)
         }, response: { (response) in
             let string = String(data: response.body ?? Data(), encoding: .utf8)!
             response.sendString(response.statusCode, value: "This response was intercepted!\r\n" + string)

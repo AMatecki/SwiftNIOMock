@@ -8,6 +8,7 @@
 import Foundation
 import NIO
 import NIOHTTP1
+import NIOHTTPCompression
 
 open class Server {
     public let port: Int
@@ -28,10 +29,10 @@ open class Server {
             .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline(withErrorHandling: true)
-                    .then {
-                        channel.pipeline.add(handler: HTTPHandler(handler: handler))
-                    }.then {
-                        channel.pipeline.add(handler: HTTPResponseCompressor())
+                    .flatMap {
+                        channel.pipeline.addHandler(HTTPHandler(handler: handler))
+                    }.flatMap {
+                        channel.pipeline.addHandler( HTTPResponseCompressor())
                 }
             }
             .childChannelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
@@ -43,10 +44,10 @@ open class Server {
         group = group ?? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         bootstrap = bootstrap ?? bootstrapServer(handler: handler)
 
-        serverChannel = try bootstrap.bind(host: "localhost", port: port).wait()
+        serverChannel = try bootstrap.bind(host: "127.0.0.1", port: port).wait()
         print("Server listening on:", serverChannel.localAddress!)
-
         serverChannel.closeFuture.whenComplete {
+            _ in
             print("Server stopped")
         }
     }
@@ -76,9 +77,9 @@ extension Server {
             self.handler = handler
         }
 
-        public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             defer {
-                ctx.fireChannelRead(data)
+                context.fireChannelRead(data)
             }
 
             switch unwrapInboundIn(data) {
@@ -94,26 +95,26 @@ extension Server {
                     httpBody = body.readString(length: body.readableBytes)?.data(using: .utf8)
                 }
 
-                let request = Request(head: head, body: httpBody, ctx: ctx)
+                let request = Request(head: head, body: httpBody, context: context)
 
-                var responseBuffer = ctx.channel.allocator.buffer(capacity: 0)
+                var responseBuffer = context.channel.allocator.buffer(capacity: 0)
 
-                let eventLoop = ctx.channel.eventLoop
+                let eventLoop = context.channel.eventLoop
                 let response = Response()
 
                 handler(request, response) {
                     eventLoop.execute {
-                        _ = ctx.channel.write(HTTPServerResponsePart.head(
+                        _ = context.channel.write(HTTPServerResponsePart.head(
                             HTTPResponseHead(version: head.version, status: response.statusCode, headers: response.headers))
                         )
                         _ = response.body
                             .flatMap { String(data: $0, encoding: .utf8) }
-                            .flatMap { responseBuffer.write(string: $0) }
+                            .flatMap { responseBuffer.writeString($0) }
 
-                        _ = ctx.channel.write(HTTPServerResponsePart.body(.byteBuffer(responseBuffer)))
+                        _ = context.channel.write(HTTPServerResponsePart.body(.byteBuffer(responseBuffer)))
 
-                        _ = ctx.channel.writeAndFlush(HTTPServerResponsePart.end(nil)).then {
-                            ctx.channel.close()
+                        _ = context.channel.writeAndFlush(HTTPServerResponsePart.end(nil)).flatMap {
+                            context.channel.close()
                         }
                         self.state.responseComplete()
                     }
@@ -146,7 +147,7 @@ extension Server.HTTPHandler {
             if buffer == nil {
                 buffer = body
             } else {
-                buffer?.write(buffer: &body)
+                buffer?.writeBuffer(&body)
             }
             self = .receivingRequest(header, buffer)
         }
@@ -175,12 +176,12 @@ extension Server.HTTPHandler {
     public struct Request {
         public let head: HTTPRequestHead
         public let body: Data?
-        public let ctx: ChannelHandlerContext
+        public let context: ChannelHandlerContext
 
-        public init(head: HTTPRequestHead, body: Data?, ctx: ChannelHandlerContext) {
+        public init(head: HTTPRequestHead, body: Data?, context: ChannelHandlerContext) {
             self.head = head
             self.body = body
-            self.ctx = ctx
+            self.context = context
         }
     }
 }
@@ -276,7 +277,7 @@ public func redirect(
 /// Middleware that delay another middleware
 public func delay(_ delay: TimeAmount, middleware: @escaping Middleware) -> Middleware {
     return { request, response, next in
-        _ = request.ctx.eventLoop.scheduleTask(in: delay) {
+        _ = request.context.eventLoop.scheduleTask(in: delay) {
             middleware(request, response, next)
         }
     }

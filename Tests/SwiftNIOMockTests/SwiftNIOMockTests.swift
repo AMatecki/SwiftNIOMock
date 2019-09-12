@@ -72,7 +72,7 @@ class SwiftNIOMockTests: XCTestCase {
             components.scheme = "https"
             head.uri = components.url!.absoluteString
 
-            return Server.HTTPHandler.Request(head: head, body: request.body, ctx: request.ctx)
+            return Server.HTTPHandler.Request(head: head, body: request.body, context: request.context)
         }
 
         let calledIntercept = self.expectation(description: "")
@@ -107,6 +107,9 @@ class SwiftNIOMockTests: XCTestCase {
         request.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
+            if error != nil {
+                print(error ?? "")
+            }
             struct EchoData: Decodable, Equatable {
                 let args: [String: String]
                 let data: String
@@ -121,15 +124,16 @@ class SwiftNIOMockTests: XCTestCase {
                 args: ["query": "value"],
                 data: "Hello world!",
                 headers: [
-                    "accept": "*/*",
-                    "accept-encoding": "gzip",
-                    "accept-language": "en-gb",
-                    "content-length": "12",
-                    "content-type": "text/html; charset=utf-8",
-                    "custom-request-header": "custom-request-header-value",
-                    "host": "localhost",
                     "user-agent": "xctest",
+                    "custom-request-header": "custom-request-header-value",
+                    "accept-encoding": "gzip",
+                    "content-length": "12",
                     "x-forwarded-port": "443",
+                    "content-type": "text/html; charset=utf-8",
+                    "accept-language": "en-gb",
+                    "cache-control": "no-cache",
+                    "host": "localhost",
+                    "accept": "*/*",
                     "x-forwarded-proto": "https"
                 ],
                 url: "https://localhost/post?query=value"

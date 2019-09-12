@@ -13,10 +13,11 @@ let package = Package(
         .library(name: "SwiftNIOMock", targets: ["SwiftNIOMock"]),
         ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "1.12.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.7.1"),
+        .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.0.0"),
         ],
     targets: [
-        .target(name: "SwiftNIOMock", dependencies: ["NIO", "NIOHTTP1"]),
+        .target(name: "SwiftNIOMock", dependencies: ["NIO", "NIOHTTP1", "NIOHTTPCompression"]),
         .testTarget(name: "SwiftNIOMockTests", dependencies: ["SwiftNIOMock"]),
     ]
 )
